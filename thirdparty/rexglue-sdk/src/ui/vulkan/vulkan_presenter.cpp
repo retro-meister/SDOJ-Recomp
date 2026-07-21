@@ -49,13 +49,22 @@
 REXCVAR_DEFINE_BOOL(present_render_pass_clear, true, "UI/Presenter",
                     "Clear render pass during presentation");
 
-REXCVAR_DEFINE_BOOL(vulkan_allow_present_mode_immediate, true, "UI/Vulkan",
+#if REX_PLATFORM_MAC
+constexpr bool kDefaultAllowNonFifoPresentModes = false;
+#else
+constexpr bool kDefaultAllowNonFifoPresentModes = true;
+#endif
+
+REXCVAR_DEFINE_BOOL(vulkan_allow_present_mode_immediate,
+                    kDefaultAllowNonFifoPresentModes, "UI/Vulkan",
                     "Allow immediate present mode (no vsync)");
 
-REXCVAR_DEFINE_BOOL(vulkan_allow_present_mode_mailbox, true, "UI/Vulkan",
+REXCVAR_DEFINE_BOOL(vulkan_allow_present_mode_mailbox,
+                    kDefaultAllowNonFifoPresentModes, "UI/Vulkan",
                     "Allow mailbox present mode (triple buffering)");
 
-REXCVAR_DEFINE_BOOL(vulkan_allow_present_mode_fifo_relaxed, true, "UI/Vulkan",
+REXCVAR_DEFINE_BOOL(vulkan_allow_present_mode_fifo_relaxed,
+                    kDefaultAllowNonFifoPresentModes, "UI/Vulkan",
                     "Allow FIFO relaxed present mode");
 
 namespace rex {

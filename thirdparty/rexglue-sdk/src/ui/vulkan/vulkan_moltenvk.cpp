@@ -167,6 +167,12 @@ MacOSVulkanRuntimePaths DetectMacOSVulkanRuntimePaths() {
 }
 
 void ConfigureMacOSVulkanEnvironment(const MacOSVulkanRuntimePaths& paths) {
+  // Avoid blocking guest GPU work while CAMetalLayer waits for a drawable.
+  const char* synchronous_submits = std::getenv("MVK_CONFIG_SYNCHRONOUS_QUEUE_SUBMITS");
+  if (!synchronous_submits || !synchronous_submits[0]) {
+    setenv("MVK_CONFIG_SYNCHRONOUS_QUEUE_SUBMITS", "0", 1);
+  }
+
   if (!paths.sdk_root.empty()) {
     const char* vulkan_sdk = std::getenv("VULKAN_SDK");
     if (!vulkan_sdk || !vulkan_sdk[0]) {
