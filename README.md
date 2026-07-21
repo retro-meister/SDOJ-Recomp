@@ -22,6 +22,32 @@ Run:
 `cmake --preset win-amd64-release`
 `cmake --build --preset win-amd64-release --parallel`
 
+### macOS (Apple Silicon)
+
+Install the build and Vulkan dependencies with Homebrew:
+
+`brew install llvm cmake ninja molten-vk vulkan-loader`
+
+Run:
+
+`cmake --preset mac-arm64-release`
+`cmake --build --preset mac-arm64-release --parallel`
+
+The executable and its runtime libraries are written to `out/build/mac-arm64-release/`.
+
+Launch from that directory, replacing the data paths with your own:
+
+```sh
+./saidaioujou_recomp_tu1 \
+  --input_backend=sdl \
+  --vsync=false \
+  --fullscreen=false \
+  --video_mode_refresh_rate=60 \
+  --xex_apply_patches=true \
+  --game_data_root="/path/to/game_data" \
+  --user_data_root="/path/to/user_data"
+```
+
 ### Linux
 
 You need CMake 3.25 or newer, Ninja, and Clang with C++23 support. The linux-amd64-release preset looks for clang-20/clang++-20 specifically.
