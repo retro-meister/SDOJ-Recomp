@@ -379,6 +379,8 @@ class KernelState {
   std::unordered_set<std::string> loading_paths_;
   std::vector<TerminateNotification> terminate_notifications_;
   std::vector<RecompiledModuleInfo> recompiled_modules_;
+  // UserModule::path() changes after VFS resolution, so preserve the registry key.
+  std::unordered_map<X_HANDLE, std::string> loaded_recompiled_module_keys_;
   std::unordered_map<std::string, rex::platform::DynamicLibrary> module_libraries_;
   // FreeLibrary deferred to teardown so guest threads still in unloaded code
   // don't return into freed pages. Drained at the end of ~KernelState.

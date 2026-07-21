@@ -838,6 +838,12 @@ object_ref<UserModule> KernelState::LoadUserModule(const std::string_view raw_na
   {
     auto global_lock = global_critical_region_.Acquire();
     user_modules_.push_back(module);
+    if (recomp) {
+      auto [it, inserted] =
+          loaded_recompiled_module_keys_.emplace(module->handle(), recomp->guest_path);
+      (void)it;
+      assert_true(inserted);
+    }
   }
 
   if (module->is_dll_module() && module->entry_point() && call_entry) {
@@ -880,9 +886,9 @@ void KernelState::UnloadUserModule(const object_ref<UserModule>& module, bool ca
   {
     auto global_lock = global_critical_region_.Acquire();
 
-    auto recomp = FindRecompiledModule(module->path());
-    if (recomp) {
-      const std::string& key = recomp->guest_path;
+    auto recomp_it = loaded_recompiled_module_keys_.find(module->handle());
+    if (recomp_it != loaded_recompiled_module_keys_.end()) {
+      const std::string& key = recomp_it->second;
       auto cleared_range = function_dispatcher_->UnregisterModule(key);
       if (cleared_range) {
         for (auto& km : kernel_modules_) {
@@ -890,13 +896,12 @@ void KernelState::UnloadUserModule(const object_ref<UserModule>& module, bool ca
         }
       }
 
-      if (!recomp->shared_lib_name.empty()) {
-        auto lib_it = module_libraries_.find(key);
-        if (lib_it != module_libraries_.end()) {
-          deferred_unload_libraries_.push_back(std::move(lib_it->second));
-          module_libraries_.erase(lib_it);
-        }
+      auto lib_it = module_libraries_.find(key);
+      if (lib_it != module_libraries_.end()) {
+        deferred_unload_libraries_.push_back(std::move(lib_it->second));
+        module_libraries_.erase(lib_it);
       }
+      loaded_recompiled_module_keys_.erase(recomp_it);
     }
 
     auto iter = std::find_if(user_modules_.begin(), user_modules_.end(),
