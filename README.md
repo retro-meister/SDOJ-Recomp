@@ -28,14 +28,16 @@ Install the build and Vulkan dependencies with Homebrew:
 
 `brew install llvm cmake ninja molten-vk vulkan-loader`
 
+For automatic first-launch ISO extraction, build and install [XboxDev/extract-xiso](https://github.com/XboxDev/extract-xiso) somewhere on `PATH` before configuring SDOJ-Recomp.
+
 Run:
 
 `cmake --preset mac-arm64-release`
 `cmake --build --preset mac-arm64-release --parallel`
 
-The executable, runtime libraries, and `launch.sh` are written to `out/build/mac-arm64-release/`.
+The executable, runtime libraries, and `launch.sh` are staged in `out/build/mac-arm64-release/`.
 
-Put or symlink the prepared `game_data` directory there, then launch with:
+Put the SDOJ ISO and TU1 file there, then launch with:
 
 ```sh
 cd out/build/mac-arm64-release
@@ -63,7 +65,7 @@ After building, copy librexruntime.so and libTracyClient.so from thirdparty/rexg
 
 1. Put SDOJ iso file in this folder, beside the recomp exe.
 2. Put the TU_11LK1V7... TU1 file in the same folder.
-3. Run "launch.bat".
+3. Run `launch.bat` on Windows or `./launch.sh` on macOS/Linux.
 
 The first launch extracts the ISO to game_data and installs the three TU1 patch
 files.

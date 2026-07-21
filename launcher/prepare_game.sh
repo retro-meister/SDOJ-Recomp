@@ -17,7 +17,8 @@ ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 GAME_DATA="$ROOT/game_data"
 USER_DATA="$ROOT/user_data"
 EXTRACTING="$ROOT/game_data.extracting"
-EXTRACTOR="$ROOT/tools/extract-xiso/extract-xiso"
+BUNDLED_EXTRACTOR="$ROOT/tools/extract-xiso/extract-xiso"
+EXTRACTOR=''
 EXECUTABLE="$ROOT/saidaioujou_recomp_tu1"
 
 EXPECTED_TITLE_UPDATE_HASH='0A893048C761BA6CF8ED14637F326726BC616B5183CA1EE52DE02FC12B46B215'
@@ -175,12 +176,17 @@ else
         die 'Found more than one ISO. Leave only the SDOJ ISO here and try again.'
     fi
 
-    [[ -f "$EXTRACTOR" ]] ||
-        die 'extract-xiso is missing. Re-extract the release and try again.'
+    if [[ -f "$BUNDLED_EXTRACTOR" ]]; then
+        EXTRACTOR="$BUNDLED_EXTRACTOR"
 
-    if [[ ! -x "$EXTRACTOR" ]]; then
-        chmod +x -- "$EXTRACTOR" ||
-            die 'Could not make extract-xiso executable.'
+        if [[ ! -x "$EXTRACTOR" ]]; then
+            chmod +x -- "$EXTRACTOR" ||
+                die 'Could not make extract-xiso executable.'
+        fi
+    elif EXTRACTOR="$(command -v extract-xiso 2>/dev/null)"; then
+        :
+    else
+        die 'extract-xiso is missing. Install it on PATH or re-extract the release.'
     fi
 
     remove_extraction_temporary_directory
@@ -189,12 +195,14 @@ else
     printf '\033[33mExtracting %s. This only happens on the first launch...\033[0m\n' \
         "$(basename -- "${iso_files[0]}")"
 
-    if ! "$EXTRACTOR" \
+    if "$EXTRACTOR" \
         -q \
         -x \
         -s \
         -d "$EXTRACTING" \
         "${iso_files[0]}"; then
+        :
+    else
         extractor_result=$?
         die "ISO extraction failed with error $extractor_result."
     fi
