@@ -16,6 +16,7 @@
 
 #include <fmt/format.h>
 #include <rex/assert.h>
+#include <rex/filesystem.h>
 #include <rex/logging.h>
 #include <rex/math.h>
 #include <rex/ppc/function.h>
@@ -45,6 +46,38 @@
 namespace rex::system {
 
 constexpr uint32_t kDeferredOverlappedDelayMillis = 100;
+
+static std::vector<std::filesystem::path> GetModuleLibraryCandidates(
+    const std::filesystem::path& registered_path) {
+  if (registered_path.has_parent_path()) {
+    return {registered_path};
+  }
+
+  std::filesystem::path filename = registered_path.filename();
+  if (filename.extension().empty()) {
+    std::string name = filename.string();
+#if REX_PLATFORM_WIN32
+    name.append(".dll");
+#elif REX_PLATFORM_MAC
+    if (!name.starts_with("lib")) name.insert(0, "lib");
+    name.append(".dylib");
+#elif REX_PLATFORM_LINUX || REX_PLATFORM_ANDROID
+    if (!name.starts_with("lib")) name.insert(0, "lib");
+    name.append(".so");
+#else
+#error Unsupported platform for recompiled module libraries.
+#endif
+    filename = name;
+  }
+
+  std::vector<std::filesystem::path> candidates = {
+      rex::filesystem::GetExecutableFolder() / filename};
+  // Preserve loader-search-path compatibility for existing projects.
+  if (candidates.front() != registered_path) {
+    candidates.push_back(registered_path);
+  }
+  return candidates;
+}
 
 // This is a global object initialized with the XboxkrnlModule.
 // It references the current kernel state object that all kernel methods should
@@ -758,14 +791,23 @@ object_ref<UserModule> KernelState::LoadUserModule(const std::string_view raw_na
     }
 
     rex::platform::DynamicLibrary library_local;
-    if (!library_local.Load(std::filesystem::path(recomp->shared_lib_name),
-                            rex::platform::SymbolResolution::kImmediate)) {
-      REXSYS_ERROR("Failed to load shared library for module '{}'", recomp->pe_name);
+    std::filesystem::path loaded_lib_path;
+    for (const auto& candidate : GetModuleLibraryCandidates(recomp->shared_lib_name)) {
+      if (library_local.Load(candidate, rex::platform::SymbolResolution::kImmediate)) {
+        loaded_lib_path = candidate;
+        break;
+      }
+      REXSYS_DEBUG("Could not load module library candidate '{}'", candidate.string());
+    }
+
+    if (!library_local) {
+      REXSYS_ERROR("Failed to load shared library '{}' for module '{}'",
+                   recomp->shared_lib_name, recomp->pe_name);
     } else {
       auto register_func = reinterpret_cast<runtime::FunctionDispatcher::RegisterFn>(
           library_local.GetRawSymbol("ReXModule_Register"));
       if (!register_func) {
-        REXSYS_ERROR("ReXModule_Register not found in '{}'", recomp->shared_lib_name);
+        REXSYS_ERROR("ReXModule_Register not found in '{}'", loaded_lib_path.string());
       } else {
         auto* xex = module->xex_module();
         auto* text = xex->GetPESection(".text");
