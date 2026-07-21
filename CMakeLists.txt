@@ -44,4 +44,20 @@ if(APPLE)
                 $<TARGET_FILE_DIR:saidaioujou_recomp_tu1>
             VERBATIM)
     endif()
+
+    add_custom_target(stage_macos_launcher
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_CURRENT_SOURCE_DIR}/launcher/launch.sh"
+            "$<TARGET_FILE_DIR:saidaioujou_recomp_tu1>/launch.sh"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_CURRENT_SOURCE_DIR}/launcher/prepare_game.sh"
+            "$<TARGET_FILE_DIR:saidaioujou_recomp_tu1>/prepare_game.sh"
+        COMMAND /bin/chmod +x
+            "$<TARGET_FILE_DIR:saidaioujou_recomp_tu1>/launch.sh"
+            "$<TARGET_FILE_DIR:saidaioujou_recomp_tu1>/prepare_game.sh"
+        SOURCES
+            "${CMAKE_CURRENT_SOURCE_DIR}/launcher/launch.sh"
+            "${CMAKE_CURRENT_SOURCE_DIR}/launcher/prepare_game.sh"
+        VERBATIM)
+    add_dependencies(saidaioujou_recomp_tu1 stage_macos_launcher)
 endif()

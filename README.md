@@ -33,19 +33,13 @@ Run:
 `cmake --preset mac-arm64-release`
 `cmake --build --preset mac-arm64-release --parallel`
 
-The executable and its runtime libraries are written to `out/build/mac-arm64-release/`.
+The executable, runtime libraries, and `launch.sh` are written to `out/build/mac-arm64-release/`.
 
-Launch from that directory, replacing the data paths with your own:
+Put or symlink the prepared `game_data` directory there, then launch with:
 
 ```sh
-./saidaioujou_recomp_tu1 \
-  --input_backend=sdl \
-  --vsync=false \
-  --fullscreen=false \
-  --video_mode_refresh_rate=60 \
-  --xex_apply_patches=true \
-  --game_data_root="/path/to/game_data" \
-  --user_data_root="/path/to/user_data"
+cd out/build/mac-arm64-release
+./launch.sh
 ```
 
 ### Linux

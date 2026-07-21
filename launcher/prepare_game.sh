@@ -57,8 +57,19 @@ require_command() {
 get_file_sha256() {
     local path="$1"
 
-    sha256sum -- "$path" |
-        awk '{ print toupper($1) }'
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum -- "$path"
+    else
+        shasum -a 256 -- "$path"
+    fi | awk '{ print toupper($1) }'
+}
+
+get_file_size() {
+    if [[ "$(uname -s)" == 'Darwin' ]]; then
+        stat -f '%z' -- "$1"
+    else
+        stat -c '%s' -- "$1"
+    fi
 }
 
 test_base_files() {
@@ -117,23 +128,19 @@ remove_extraction_temporary_directory() {
 
 printf '\033[36mSDOJ recomp setup\033[0m\n\n'
 
-require_command sha256sum
 require_command awk
 require_command find
 require_command stat
 require_command dd
 require_command mktemp
+require_command uname
 
-[[ -f "$EXTRACTOR" ]] ||
-    die 'extract-xiso is missing. Re-extract the release and try again.'
-
-if [[ ! -x "$EXTRACTOR" ]]; then
-    chmod +x -- "$EXTRACTOR" ||
-        die 'Could not make extract-xiso executable.'
+if ! command -v sha256sum >/dev/null 2>&1; then
+    require_command shasum
 fi
 
 [[ -f "$EXECUTABLE" ]] ||
-    die 'The Linux recomp executable is missing. Re-extract the release and try again.'
+    die 'The recomp executable is missing. Re-extract the release and try again.'
 
 if [[ ! -x "$EXECUTABLE" ]]; then
     chmod +x -- "$EXECUTABLE" ||
@@ -168,6 +175,14 @@ else
         die 'Found more than one ISO. Leave only the SDOJ ISO here and try again.'
     fi
 
+    [[ -f "$EXTRACTOR" ]] ||
+        die 'extract-xiso is missing. Re-extract the release and try again.'
+
+    if [[ ! -x "$EXTRACTOR" ]]; then
+        chmod +x -- "$EXTRACTOR" ||
+            die 'Could not make extract-xiso executable.'
+    fi
+
     remove_extraction_temporary_directory
     mkdir -- "$EXTRACTING"
 
@@ -196,7 +211,10 @@ fi
 if test_patch_files "$GAME_DATA"; then
     printf '\033[32mTU1 is already set up.\033[0m\n'
 else
-    mapfile -d '' -t tu_candidates < <(
+    tu_candidates=()
+    while IFS= read -r -d '' candidate; do
+        tu_candidates+=("$candidate")
+    done < <(
         find "$ROOT" \
             -maxdepth 1 \
             -type f \
@@ -220,7 +238,7 @@ else
     printf '\033[33mInstalling TU1 from %s...\033[0m\n' \
         "$(basename -- "$title_update")"
 
-    title_update_size="$(stat -c '%s' -- "$title_update")"
+    title_update_size="$(get_file_size "$title_update")"
 
     if [[ "$title_update_size" != '598016' ]]; then
         die 'That TU1 file is the wrong size.'
