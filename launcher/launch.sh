@@ -27,7 +27,7 @@ cd -- "$ROOT" || exit 1
 
 exec "$EXECUTABLE" \
     --input_backend=sdl \
-    --vsync=false \
+    --vsync=true \
     --fullscreen=false \
     --video_mode_refresh_rate=60 \
     --xex_apply_patches=true \
