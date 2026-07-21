@@ -13,6 +13,10 @@
 #include <cstring>
 #include <utility>
 
+#if REX_PLATFORM_MAC
+#include <sys/mman.h>
+#endif
+
 #include <fmt/format.h>
 
 #include <rex/assert.h>
@@ -132,16 +136,28 @@ bool Memory::Initialize() {
 
   // Create main page file-backed mapping. This is all reserved but
   // uncommitted (so it shouldn't expand page file).
-  mapping_ =
-      rex::memory::CreateFileMappingHandle(file_name_,
-                                           // entire 4gb space + 512mb physical:
-                                           0x11FFFFFFF, rex::memory::PageAccess::kReadWrite, false);
+  // Round up to allocation granularity to accommodate platforms with large pages.
+  const size_t mapping_size =
+      rex::round_up(static_cast<size_t>(0x120000000ull) + system_allocation_granularity_,
+                    static_cast<size_t>(system_allocation_granularity_));
+  mapping_ = rex::memory::CreateFileMappingHandle(file_name_, mapping_size,
+                                                  rex::memory::PageAccess::kReadWrite, false);
   if (mapping_ == rex::memory::kFileMappingHandleInvalid) {
     REXSYS_ERROR("Unable to reserve the 4gb guest address space.");
     assert_always();
     return false;
   }
 
+#if REX_PLATFORM_MAC
+  // On macOS, reserve a contiguous host range first, then carve guest views
+  // into it with MAP_SHARED|MAP_FIXED so all views share the same backing fd.
+  if (MapViewsMac()) {
+    REXSYS_ERROR("Unable to find a continuous block in the 64bit address space.");
+    assert_always();
+    return false;
+  }
+  mapping_base_ = views_.all_views[0];
+#else
   // Attempt to create our views. This may fail at the first address
   // we pick, so try a few times.
   mapping_base_ = 0;
@@ -157,6 +173,7 @@ bool Memory::Initialize() {
     assert_always();
     return false;
   }
+#endif
   virtual_membase_ = mapping_base_;
   physical_membase_ = mapping_base_ + 0x100000000ull;
 
@@ -291,6 +308,52 @@ static const struct {
         0x0000000100000000ull,
     },
 };
+#if REX_PLATFORM_MAC
+int Memory::MapViewsMac() {
+  assert_true(rex::countof(map_info) == rex::countof(views_.all_views));
+
+  // macOS does not guarantee that a non-MAP_FIXED mmap will honor a requested
+  // address. Reserve a contiguous range first, then MAP_FIXED each view within
+  // it so the guest layout is stable across runs.
+  const size_t total_size =
+      static_cast<size_t>(map_info[rex::countof(map_info) - 1].virtual_address_end -
+                          map_info[0].virtual_address_start + 1);
+
+  void* reserved_base = mmap(nullptr, total_size, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+  if (reserved_base == MAP_FAILED) {
+    REXSYS_ERROR("MapViewsMac: reserve failed: {}", std::strerror(errno));
+    return 1;
+  }
+
+  uint8_t* mapping_base = reinterpret_cast<uint8_t*>(reserved_base);
+  uint64_t granularity_mask = ~uint64_t(system_allocation_granularity_ - 1);
+
+  for (size_t n = 0; n < rex::countof(map_info); n++) {
+    size_t view_size = static_cast<size_t>(map_info[n].virtual_address_end -
+                                           map_info[n].virtual_address_start + 1);
+    size_t file_offset = static_cast<size_t>(map_info[n].target_address & granularity_mask);
+    void* target_address = mapping_base + map_info[n].virtual_address_start;
+    void* result = mmap(target_address, view_size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED,
+                        mapping_, file_offset);
+    if (result == MAP_FAILED || result != target_address) {
+      int err = errno;
+      REXSYS_ERROR(
+          "MapViewsMac: map failed view {} addr 0x{:016X} size 0x{:X} offset 0x{:X} err {} ({})", n,
+          reinterpret_cast<uintptr_t>(target_address), view_size, file_offset, err,
+          std::strerror(err));
+      munmap(reserved_base, total_size);
+      for (auto& view : views_.all_views) {
+        view = nullptr;
+      }
+      return 1;
+    }
+    views_.all_views[n] = reinterpret_cast<uint8_t*>(result);
+  }
+
+  return 0;
+}
+#endif  // REX_PLATFORM_MAC
+
 int Memory::MapViews(uint8_t* mapping_base) {
   assert_true(rex::countof(map_info) == rex::countof(views_.all_views));
   // 0xE0000000 4 KB offset is emulated via host_address_offset and on the CPU
@@ -846,7 +909,9 @@ void BaseHeap::Dispose() {
   for (uint32_t page_number = 0; page_number < page_table_.size(); ++page_number) {
     auto& page_entry = page_table_[page_number];
     if (page_entry.state) {
-      rex::memory::DeallocFixed(TranslateRelative(page_number << page_size_shift_), 0,
+      rex::memory::DeallocFixed(TranslateRelative(page_number << page_size_shift_),
+                                static_cast<size_t>(page_entry.region_page_count)
+                                    << page_size_shift_,
                                 rex::memory::DeallocationType::kRelease);
       page_number += page_entry.region_page_count;
     }
@@ -1348,18 +1413,26 @@ bool BaseHeap::Release(uint32_t base_address, uint32_t* out_region_size) {
     return false;
   }*/
   // Instead, we just protect it, if we can.
-  if (page_size_ == rex::memory::page_size() ||
-      ((base_page_entry.region_page_count << page_size_shift_) % rex::memory::page_size() == 0 &&
-       ((base_page_number << page_size_shift_) % rex::memory::page_size() == 0))) {
-    // TODO(benvanik): figure out why games are using memory after releasing
-    // it. It's possible this is some virtual/physical stuff where the GPU
-    // still can access it.
-    if (REXCVAR_GET(protect_on_release)) {
-      if (!rex::memory::Protect(TranslateRelative(base_page_number << page_size_shift_),
-                                base_page_entry.region_page_count << page_size_shift_,
-                                rex::memory::PageAccess::kNoAccess, nullptr)) {
-        REXSYS_WARN("BaseHeap::Release failed due to host VirtualProtect failure");
-      }
+  // TODO(benvanik): figure out why games are using memory after releasing
+  // it. It's possible this is some virtual/physical stuff where the GPU
+  // still can access it.
+  if (REXCVAR_GET(protect_on_release)) {
+    uint8_t* host_address = TranslateRelative(base_page_number << page_size_shift_);
+    size_t host_length = size_t(base_page_entry.region_page_count) << page_size_shift_;
+    uint32_t host_page_size = uint32_t(rex::memory::page_size());
+    if (page_size_ != host_page_size) {
+      // See BaseHeap::Protect for why this rounding is needed - the host
+      // page size (and, for the 0xE0000000 physical range,
+      // host_address_offset_) may not divide our page granularity evenly.
+      size_t aligned_start = reinterpret_cast<size_t>(host_address) & ~(size_t(host_page_size) - 1);
+      size_t aligned_end = rex::round_up(reinterpret_cast<size_t>(host_address) + host_length,
+                                         size_t(host_page_size));
+      host_address = reinterpret_cast<uint8_t*>(aligned_start);
+      host_length = aligned_end - aligned_start;
+    }
+    if (!rex::memory::Protect(host_address, host_length, rex::memory::PageAccess::kNoAccess,
+                              nullptr)) {
+      REXSYS_WARN("BaseHeap::Release failed due to host VirtualProtect failure");
     }
   }
 
@@ -1426,25 +1499,36 @@ bool BaseHeap::Protect(uint32_t address, uint32_t size, uint32_t protect, uint32
   }
 
   // Attempt host change (hopefully won't fail).
-  // We can only do this if our size matches system page granularity.
   uint32_t page_count = end_page_number - start_page_number + 1;
-  if (page_size_ == rex::memory::page_size() ||
-      (((page_count << page_size_shift_) % rex::memory::page_size() == 0) &&
-       ((start_page_number << page_size_shift_) % rex::memory::page_size() == 0))) {
-    memory::PageAccess old_protect_access;
-    if (!rex::memory::Protect(TranslateRelative(start_page_number << page_size_shift_),
-                              page_count << page_size_shift_, ToPageAccess(protect),
-                              old_protect ? &old_protect_access : nullptr)) {
-      REXSYS_ERROR("BaseHeap::Protect failed due to host VirtualProtect failure");
-      return false;
-    }
+  uint8_t* host_address = TranslateRelative(start_page_number << page_size_shift_);
+  size_t host_length = size_t(page_count) << page_size_shift_;
+  uint32_t host_page_size = uint32_t(rex::memory::page_size());
+  if (page_size_ != host_page_size) {
+    // The host page granularity can be bigger than our page granularity (for
+    // instance, 16 KB host pages on Apple Silicon vs. 4 KB guest pages), and
+    // heaps with a non-zero host_address_offset_ (the 0xE0000000 physical
+    // range) additionally shift every host address by a fixed amount that
+    // doesn't necessarily land on a host page boundary. Round the region out
+    // to the enclosing host pages - the same coarsening VirtualProtect
+    // already does implicitly on Windows - instead of either dropping the
+    // request or handing the host a misaligned address, which makes
+    // mprotect() fail outright on POSIX.
+    size_t aligned_start = reinterpret_cast<size_t>(host_address) & ~(size_t(host_page_size) - 1);
+    size_t aligned_end =
+        rex::round_up(reinterpret_cast<size_t>(host_address) + host_length, size_t(host_page_size));
+    host_address = reinterpret_cast<uint8_t*>(aligned_start);
+    host_length = aligned_end - aligned_start;
+  }
 
-    if (old_protect) {
-      *old_protect = FromPageAccess(old_protect_access);
-    }
-  } else {
-    REXSYS_WARN("BaseHeap::Protect: ignoring request as not 4k page aligned");
+  memory::PageAccess old_protect_access;
+  if (!rex::memory::Protect(host_address, host_length, ToPageAccess(protect),
+                            old_protect ? &old_protect_access : nullptr)) {
+    REXSYS_ERROR("BaseHeap::Protect failed due to host VirtualProtect failure");
     return false;
+  }
+
+  if (old_protect) {
+    *old_protect = FromPageAccess(old_protect_access);
   }
 
   // Perform table change.
@@ -1842,6 +1926,11 @@ void PhysicalHeap::EnableAccessCallbacks(uint32_t physical_address, uint32_t len
     uint64_t page_flags_bit = uint64_t(1) << (i & 63);
     uint32_t guest_page_number =
         rex::sat_sub(i * system_page_size_, host_address_offset()) >> page_size_shift_;
+    if (guest_page_number >= page_table_.size()) {
+      REXSYS_ERROR("Access callback page OOB: system_page={} guest_page={} offset=0x{:X}", i,
+                   guest_page_number, host_address_offset());
+      assert_always();
+    }
     rex::memory::PageAccess current_page_access =
         ToPageAccess(page_table_[guest_page_number].current_protect);
     bool protect_system_page = false;

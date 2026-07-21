@@ -16,10 +16,6 @@ add_library(rexaudio OBJECT
 )
 add_library(rex::audio ALIAS rexaudio)
 
-if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
-    target_compile_options(rexaudio PRIVATE -mssse3)
-endif()
-
 target_include_directories(rexaudio PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>

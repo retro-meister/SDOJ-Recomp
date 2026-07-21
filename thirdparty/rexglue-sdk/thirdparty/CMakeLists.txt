@@ -5,10 +5,20 @@ set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 #=============================================================================
 # Architecture detection
 #=============================================================================
-if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64)$")
+if(APPLE AND CMAKE_OSX_ARCHITECTURES)
+    # On Apple, CMAKE_OSX_ARCHITECTURES is the target arch; CMAKE_SYSTEM_PROCESSOR
+    # reflects the host (e.g. arm64 on Apple Silicon even when cross-building x86_64).
+    if("arm64" IN_LIST CMAKE_OSX_ARCHITECTURES)
+        set(IS_ARM64 TRUE)
+        set(IS_X86_64 FALSE)
+    else()
+        set(IS_ARM64 FALSE)
+        set(IS_X86_64 TRUE)
+    endif()
+elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64)$")
     set(IS_ARM64 FALSE)
     set(IS_X86_64 TRUE)
-elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|ARM64)$")
+elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|ARM64|arm64)$")
     set(IS_ARM64 TRUE)
     set(IS_X86_64 FALSE)
 else()
@@ -17,7 +27,7 @@ else()
 endif()
 
 #=============================================================================
-# Verify vendored dependencies are populated
+# Verify git submodules are initialized (only vendored ones)
 #=============================================================================
 set(REQUIRED_SUBMODULES
     cli11
@@ -51,10 +61,11 @@ if(REXGLUE_BUILD_TESTS)
 endif()
 
 foreach(submodule ${REQUIRED_SUBMODULES})
-    file(GLOB submodule_files "${CMAKE_CURRENT_SOURCE_DIR}/${submodule}/*")
-    if(NOT submodule_files)
+    if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${submodule}/.git")
         message(FATAL_ERROR
-            "Vendored dependency '${submodule}' is missing."
+            "Git submodule '${submodule}' is not initialized.\n"
+            "Please run: git submodule update --init --recursive\n"
+            "from the repository root directory."
         )
     endif()
 endforeach()
@@ -110,7 +121,9 @@ target_include_directories(aes128 PUBLIC
 # Suppress warnings in third-party C code
 target_compile_options(aes128 PRIVATE -w)
 
-set(MSPACK_DIR "${CMAKE_CURRENT_SOURCE_DIR}/libmspack/libmspack/mspack")
+# libmspack - LZX decompression (only lzxd.c needed for XEX decompression)
+# Uses cabextract version which has all needed headers in one place
+set(MSPACK_DIR "${CMAKE_CURRENT_SOURCE_DIR}/libmspack/cabextract/mspack")
 add_library(mspack STATIC
     ${MSPACK_DIR}/lzxd.c
 )
@@ -172,6 +185,9 @@ set(SNAPPY_BUILD_BENCHMARKS OFF CACHE BOOL "" FORCE)
 set(SNAPPY_INSTALL ON CACHE BOOL "" FORCE)
 add_subdirectory(snappy)
 target_compile_options(snappy PRIVATE -w)
+if(APPLE AND IS_ARM64)
+    target_compile_options(snappy PRIVATE -march=armv8-a+crc)
+endif()
 
 #=============================================================================
 # utfcpp - UTF-8 string library (header-only)
@@ -232,8 +248,17 @@ set(SDL_STATIC ON CACHE BOOL "" FORCE)
 set(SDL_TEST OFF CACHE BOOL "" FORCE)
 set(SDL_UNIX_CONSOLE_BUILD ON CACHE BOOL "" FORCE)
 
-# Disable unused subsystems
-set(SDL_VIDEO OFF CACHE BOOL "" FORCE)
+# Video provides the windowing/event layer; presenters create their own
+# D3D12/Vulkan surfaces from native handles, so SDL_RENDER stays off.
+set(SDL_VIDEO ON CACHE BOOL "" FORCE)
+if(APPLE)
+    # macOS uses SDL for windowing + Metal/Vulkan surface creation.
+    set(SDL_METAL ON CACHE BOOL "" FORCE)
+    set(SDL_VULKAN ON CACHE BOOL "" FORCE)
+else()
+    set(SDL_METAL OFF CACHE BOOL "" FORCE)
+    set(SDL_VULKAN OFF CACHE BOOL "" FORCE)
+endif()
 set(SDL_RENDER OFF CACHE BOOL "" FORCE)
 set(SDL_HAPTIC OFF CACHE BOOL "" FORCE)
 set(SDL_SENSOR OFF CACHE BOOL "" FORCE)
@@ -242,15 +267,19 @@ set(SDL_FILESYSTEM OFF CACHE BOOL "" FORCE)
 set(SDL_LOCALE OFF CACHE BOOL "" FORCE)
 set(SDL_FILE OFF CACHE BOOL "" FORCE)
 set(SDL_MISC OFF CACHE BOOL "" FORCE)
-set(SDL_DIALOG OFF CACHE BOOL "" FORCE)
+# File dialogs: Linux consumers rely on SDL's xdg-desktop-portal/zenity
+# backends; Windows apps use IFileOpenDialog directly, so keep it off there.
+if(WIN32)
+    set(SDL_DIALOG OFF CACHE BOOL "" FORCE)
+else()
+    set(SDL_DIALOG ON CACHE BOOL "" FORCE)
+endif()
 set(SDL_TRAY OFF CACHE BOOL "" FORCE)
 set(SDL_CAMERA OFF CACHE BOOL "" FORCE)
 
-# Disable graphics APIs (unused without video)
+# Disable graphics APIs (unused without video) — only on non-Apple
 set(SDL_OPENGL OFF CACHE BOOL "" FORCE)
 set(SDL_OPENGLES OFF CACHE BOOL "" FORCE)
-set(SDL_VULKAN OFF CACHE BOOL "" FORCE)
-set(SDL_METAL OFF CACHE BOOL "" FORCE)
 
 # Disable dummy drivers
 set(SDL_DISKAUDIO OFF CACHE BOOL "" FORCE)
@@ -664,5 +693,10 @@ if(WIN32)
     target_link_libraries(libavcodec PRIVATE bcrypt)
 endif()
 
-# IDE folder organization
-set_target_properties(libavutil libavcodec PROPERTIES FOLDER "FFmpeg")
+# Hidden visibility is required on aarch64. The NEON .S files use ADRP/ADD
+# PC-relative addressing (movrel) for symbols like ff_cos_*, which the linker
+# only accepts against locally bound symbols when emitting a shared object.
+set_target_properties(libavutil libavcodec PROPERTIES
+    C_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN ON
+    FOLDER "FFmpeg")
