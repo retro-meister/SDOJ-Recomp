@@ -133,6 +133,9 @@ WindowSDL::~WindowSDL() {
 bool WindowSDL::OpenImpl() {
   // SDL window coordinates are physical pixels on Windows and X11.
   SDL_WindowFlags flags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_HIDDEN;
+  if (REXCVAR_GET(window_maximized) && !IsFullscreen()) {
+    flags |= SDL_WINDOW_MAXIMIZED;
+  }
 #if REX_PLATFORM_MAC
   flags |= SDL_WINDOW_METAL;
 #endif

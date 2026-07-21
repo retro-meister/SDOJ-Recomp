@@ -29,6 +29,7 @@ exec "$EXECUTABLE" \
     --input_backend=sdl \
     --vsync=true \
     --fullscreen=false \
+    --window_maximized=true \
     --video_mode_refresh_rate=60 \
     --xex_apply_patches=true \
     --game_data_root="$ROOT/game_data" \
