@@ -5,6 +5,8 @@
 #include <rex/cvar.h>
 #include <rex/rex_app.h>
 
+#include "exitgame.h"
+
 class SaidaioujouRecompTu1App : public rex::ReXApp {
  public:
   using rex::ReXApp::ReXApp;
@@ -21,5 +23,9 @@ class SaidaioujouRecompTu1App : public rex::ReXApp {
 
   void OnPostSetup() override {
     rex::cvar::SetFlagByName("gpu_allow_invalid_fetch_constants", "true");
+  }
+
+  void OnCreateDialogs(rex::ui::ImGuiDrawer*) override {
+    sdoj_pc_exit::set_window(*window());
   }
 };
