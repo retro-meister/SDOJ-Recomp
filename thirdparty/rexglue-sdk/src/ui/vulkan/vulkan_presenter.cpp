@@ -762,6 +762,16 @@ VulkanPresenter::ConnectOrReconnectPaintingToSurfaceFromUIThread(Surface& new_su
   // GPU.
   if (paint_context_.vulkan_surface != VK_NULL_HANDLE) {
     VkSwapchainKHR old_swapchain = paint_context_.PrepareForSwapchainRetirement();
+#if REX_PLATFORM_MAC
+    // Drain MoltenVK presentation before replacing its CAMetalLayer swapchain.
+    if (old_swapchain != VK_NULL_HANDLE && paint_context_.present_queue_family != UINT32_MAX) {
+      const VulkanDevice::Queue::Acquisition present_queue =
+          vulkan_device_->AcquireQueue(paint_context_.present_queue_family, 0);
+      dfn.vkQueueWaitIdle(present_queue.queue());
+      dfn.vkDestroySwapchainKHR(device, old_swapchain, nullptr);
+      old_swapchain = VK_NULL_HANDLE;
+    }
+#endif
     bool surface_unusable;
     paint_context_.swapchain = PaintContext::CreateSwapchainForVulkanSurface(
         vulkan_device_, paint_context_.vulkan_surface, new_surface_width, new_surface_height,
