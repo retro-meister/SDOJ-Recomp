@@ -34,6 +34,23 @@
             }
         },
         {
+            "name": "mac-arm64-base",
+            "hidden": true,
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/out/build/${presetName}",
+            "cacheVariables": {
+                "CMAKE_C_COMPILER": "/opt/homebrew/opt/llvm/bin/clang",
+                "CMAKE_CXX_COMPILER": "/opt/homebrew/opt/llvm/bin/clang++",
+                "CMAKE_OSX_ARCHITECTURES": "arm64",
+                "REXSDK_DIR": "${sourceDir}/thirdparty/rexglue-sdk"
+            },
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Darwin"
+            }
+        },
+        {
             "name": "windows-arm64-base",
             "hidden": true,
             "inherits": "windows-base",
@@ -88,6 +105,12 @@
             "cacheVariables": { "CMAKE_BUILD_TYPE": "RelWithDebInfo" }
         },
         {
+            "name": "mac-arm64-release",
+            "displayName": "macOS ARM64 Release",
+            "inherits": "mac-arm64-base",
+            "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
+        },
+        {
             "name": "win-arm64-debug",
             "displayName": "Windows ARM64 Debug",
             "inherits": "windows-arm64-base",
@@ -131,6 +154,7 @@
         { "name": "linux-amd64-debug", "configurePreset": "linux-amd64-debug" },
         { "name": "linux-amd64-release", "configurePreset": "linux-amd64-release" },
         { "name": "linux-amd64-relwithdebinfo", "configurePreset": "linux-amd64-relwithdebinfo" },
+        { "name": "mac-arm64-release", "configurePreset": "mac-arm64-release" },
         { "name": "win-arm64-debug", "configurePreset": "win-arm64-debug" },
         { "name": "win-arm64-release", "configurePreset": "win-arm64-release" },
         { "name": "win-arm64-relwithdebinfo", "configurePreset": "win-arm64-relwithdebinfo" },

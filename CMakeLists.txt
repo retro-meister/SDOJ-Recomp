@@ -24,4 +24,24 @@ else()
     add_executable(saidaioujou_recomp_tu1 ${SAIDAIOUJOURECOMPTU1_SOURCES})
 endif()
 
-rexglue_setup_target(saidaioujou_recomp_tu1)
+rexglue_setup_target(saidaioujou_recomp_tu1 GPU_PLUGINS xenos)
+
+if(APPLE)
+    # Required by rex_app.cpp in source-tree SDK builds.
+    if(TARGET imgui::imgui)
+        target_include_directories(saidaioujou_recomp_tu1 PRIVATE
+            $<TARGET_PROPERTY:imgui::imgui,INTERFACE_INCLUDE_DIRECTORIES>)
+    endif()
+    if(TARGET rexcore)
+        target_include_directories(saidaioujou_recomp_tu1 PRIVATE
+            $<TARGET_PROPERTY:rexcore,INTERFACE_INCLUDE_DIRECTORIES>)
+    endif()
+
+    if(TARGET Tracy::TracyClient)
+        add_custom_command(TARGET saidaioujou_recomp_tu1 POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                $<TARGET_FILE:Tracy::TracyClient>
+                $<TARGET_FILE_DIR:saidaioujou_recomp_tu1>
+            VERBATIM)
+    endif()
+endif()

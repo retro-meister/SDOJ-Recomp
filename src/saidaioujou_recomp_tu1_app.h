@@ -2,7 +2,7 @@
 
 #pragma once
 
-#include <rex/graphics/flags.h>
+#include <rex/cvar.h>
 #include <rex/rex_app.h>
 
 class SaidaioujouRecompTu1App : public rex::ReXApp {
@@ -16,6 +16,10 @@ class SaidaioujouRecompTu1App : public rex::ReXApp {
   }
 
   void OnPreSetup(rex::RuntimeConfig& config) override {
-    REXCVAR_SET(gpu_allow_invalid_fetch_constants, true);
+    config.gpu_plugin = "xenos";
+  }
+
+  void OnPostSetup() override {
+    rex::cvar::SetFlagByName("gpu_allow_invalid_fetch_constants", "true");
   }
 };
