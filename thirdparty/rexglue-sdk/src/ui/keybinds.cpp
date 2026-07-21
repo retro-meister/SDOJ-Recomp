@@ -215,8 +215,10 @@ bool ProcessKeyEvent(KeyEvent& e) {
       continue;
     VirtualKey vk = ParseVirtualKey(entry.current_key);
     if (vk != VirtualKey::kNone && e.virtual_key() == vk) {
-      entry.callback();
       e.set_handled(true);
+      if (!e.prev_state()) {
+        entry.callback();
+      }
       return true;
     }
   }

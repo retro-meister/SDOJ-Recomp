@@ -414,6 +414,19 @@ void ReXApp::SetupOverlays(rex::ui::Presenter* presenter, rex::ui::ImmediateDraw
       achievements_overlay_ = CreateAchievementsOverlay();
     }
   });
+  rex::ui::RegisterBind("bind_fast_forward", "F6", "Toggle fast-forward", [this] {
+    const bool enable = !fast_forward_enabled_;
+    if (enable) {
+      fast_forward_restore_vsync_ = rex::cvar::Query<bool>("vsync");
+    }
+    const bool vsync = enable ? false : fast_forward_restore_vsync_;
+    if (!rex::cvar::SetFlagByName("vsync", vsync ? "true" : "false")) {
+      REXLOG_WARN("Unable to toggle fast-forward because the vsync setting is unavailable");
+      return;
+    }
+    fast_forward_enabled_ = enable;
+    REXLOG_INFO("Fast-forward {}", enable ? "enabled" : "disabled");
+  });
 
   OnCreateDialogs(imgui_drawer_.get());
 }
