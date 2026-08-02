@@ -11,11 +11,12 @@ Dodonpachi Saidaioujou Recompilation using [rexglue](https://github.com/rexglue/
 
 ### Slowdown
 
-The slowdown is the same as Xbox 360, not including the hardware lag. That means the game can not go lower than half speed, and some places will have less slowdown (generally stage 5 in both regular and expert modes). Xbox 360 Arrange does **not** have any slowdown. All the slowdown comes from Xbox 360 lagging itself. Slowdown for arcade modes **will be adjusted** in the following releases
+Slowdown is heavily tweaked compared to Xbox 360. The game is tuned to mostly match what you'd see playing on shmupmame 5.3.1, for both expert and regular modes. Xbox Arrange mode does **not** have any slowdown, as all the slowdown comes from the 360 lagging itself, thus, the slowdown will not be tuned for this mode.
 
 ### Other issues
 - The render patch sometimes introduces graphical artificats
 - The frame delievery is pretty bad right now, the game does not look very smooth unless you run it through Special K.
+- Audio fadeout issues if not using Special K
   
 # Building
 
@@ -86,9 +87,9 @@ setup, the ISO and TU container may be removed.
 
 # Settings 
 
-There are some hardcoded arguments in the launch.cmd. You can edit them as you wish, but don't remove  --xex_apply_patches=true.
+There are some hardcoded arguments in launch.bat/launch.sh. You can edit them as you wish, but don't remove `--xex_apply_patches=true`.
 
-You can open the settings by pressing F4 in game. To turn on keyboard inputs, go to the Input tab and turn on mnk_mode. The recommended input backend is xinput, the input lag should be around ~1 frame during gameplay with it. To achieve more consistent results, running the game through Special K is recommended. If you turn off VSync (it is disabled by default), you might have to cap the FPS manually to 60 via Special K or any other way.
+You can open the settings by pressing F4 in game. To turn on keyboard inputs, go to the Input tab and turn on mnk_mode. For best latency, it is recommneded to use input_backend set to xinput. To achieve more consistent results, running the game through Special K is recommended. If you turn off VSync (it is disabled by default), you might have to cap the FPS manually to 60 via Special K or any other way.
 
 The saved settings are stored in the saidaioujou_recomp_tu1.toml config file.
 

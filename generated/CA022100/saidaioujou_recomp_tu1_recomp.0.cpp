@@ -4,12 +4,15 @@
 
 #include <atomic>
 #include <chrono>
-#include <mutex>
 #include <thread>
 
 extern uint32_t late_render_calls_to_skip;
-extern std::mutex render_buffer_lock;
 extern std::atomic<uint32_t> render_worker_state;
+
+// renderwork is calculated on a separate thread from the thread that does the rest of slowdown math
+// during slowdown the renderwork value can get replaced with a 0 from an empty batch
+// store the latest real value here for use later
+std::atomic<int32_t> pending_render_work{0};
 
 namespace {
 
@@ -25,7 +28,7 @@ void WaitForBufferSwap(uint8_t* base, uint32_t old_buffer_swap_count) {
 	}
 }
 
-}  // namespace
+}  
 
 DEFINE_REX_FUNC(sub_88030000) {
 	REX_FUNC_PROLOGUE();
@@ -2057,12 +2060,7 @@ loc_88030DF0:
 	}
 	// bl 0x88033e88
 	ctx.lr = 0x88030DF4;
-	if (sdoj_patch_flags::render_enabled()) {
-		std::lock_guard<std::mutex> lock(render_buffer_lock);
-		sub_88033E88(ctx, base);
-	} else {
-		sub_88033E88(ctx, base);
-	}
+	sub_88033E88(ctx, base);
 loc_render_callback_exit:
 	// mr r3,r31
 	ctx.r3.u64 = ctx.r31.u64;
@@ -3153,6 +3151,14 @@ loc_88031584:
 	ctx.r11.u64 = REX_LOAD_U32(ctx.r3.u32 + 544);
 	// lwz r10,548(r3)
 	ctx.r10.u64 = REX_LOAD_U32(ctx.r3.u32 + 548);
+	// save the renderwork
+	if (REX_LOAD_U32(0x888791A8) > 1 &&
+		(ctx.r11.u32 != 0 || ctx.r10.u32 != 0)) {
+		pending_render_work.store(
+			(static_cast<int32_t>(ctx.r11.u32) +
+			 static_cast<int32_t>(ctx.r10.u32)) / 256,
+			std::memory_order_release);
+	}
 	// stw r11,-28160(r8)
 	REX_STORE_U32(ctx.r8.u32 + -28160, ctx.r11.u32);
 	// stw r10,-28156(r7)
